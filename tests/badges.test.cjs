@@ -1,0 +1,21 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {productInput,serialize}=require('../lib/mk.cjs');
+const valid={name:'Gato agiota',price:49.9,category:'Casa',condition:'Seminovo',description:'Produto de teste',sold:false,unique:true};
+test('custom labels are accepted and whitespace is trimmed',()=>{assert.equal(productInput({...valid,badge:'  Preço de noiado  '}).badge_text,'Preço de noiado');assert.equal(productInput({...valid,badge:'Olha ela aí!'}).badge_text,'Olha ela aí!')});
+test('clearing the label is intentional and stays empty on the public product',()=>{const record=productInput({...valid,badge:'  '});assert.equal(record.badge_text,'');assert.equal(serialize({url:'https://test.supabase.co'},{...record,photo_path:'photo.jpg',unique_item:true}).badge,'')});
+test('overlong labels, control characters and non-text values are rejected',()=>{for(const badge of ['x'.repeat(25),'Preço\nbaixo','Preço\tbaixo',15,null])assert.throws(()=>productInput({...valid,badge}),{status:400})});
+test('old clients can update status without clearing an existing custom label',()=>{const record=productInput(valid);assert.ok(!Object.hasOwn(record,'badge_text'));assert.equal(serialize({url:'https://test.supabase.co'},{...record,badge_text:'Preço de noiado',photo_path:'p.jpg'}).badge,'Preço de noiado')});
+test('legacy products retain piece labels until the SQL update is applied',()=>{assert.equal(serialize({url:'https://test.supabase.co'},{...valid,unique_item:true,photo_path:'p.jpg'}).badge,'Peça única');assert.equal(serialize({url:'https://test.supabase.co'},{...valid,unique_item:false,photo_path:'p.jpg'}).badge,'')});
+test('storefront escapes label markup and respects empty labels',async()=>{
+ const elements={};const el=s=>elements[s]??={value:s==='#sort'?'recent':'',innerHTML:'',textContent:'',hidden:false,classList:{add(){},remove(){},toggle(){}}};
+ const context={document:{querySelector:el,querySelectorAll:()=>[],addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},window:{addEventListener(){}},location:{hash:'',href:'https://mk.example'},URL,Intl,Set,setTimeout,clearTimeout,fetch:async()=>({ok:true,json:async()=>({products:[],phone:''})})};
+ vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8'),context);
+ await Promise.resolve();await Promise.resolve();await Promise.resolve();
+ const base={id:'test',...valid,photo:'https://images.unsplash.com/photo-test',badge:'<img src=x onerror=x>'};
+ vm.runInContext('products='+JSON.stringify([base])+';render();',context);
+ assert.ok(el('#grid').innerHTML.includes('&lt;img src=x onerror=x&gt;'));
+ assert.ok(!el('#grid').innerHTML.includes('<img src=x onerror=x>'));
+ vm.runInContext('products[0].badge="";render();',context);
+ assert.ok(!el('#grid').innerHTML.includes('class="piece"'));
+});

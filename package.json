@@ -1,0 +1,1 @@
+{"name":"mk-preco-de-noiado","version":"2.0.0","private":true,"engines":{"node":"24.x"},"scripts":{"build":"node scripts/build.cjs","test":"node --test tests/*.test.cjs"}}
